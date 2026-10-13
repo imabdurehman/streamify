@@ -1,4 +1,6 @@
 import multer from "multer";
+import crypto from "crypto";
+import path from "path";
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -6,7 +8,13 @@ const storage = multer.diskStorage({
   },
 
   filename: function (req, file, cb) {
-    cb(null, file.originalname);
+    const ext = path.extname(file.originalname) || ""; // get .png .jpg .mp4
+
+    crypto.randomBytes(16, function (err, raw) {
+      if (err) return cb(err);
+
+      cb(null, file.fieldname + "-" + raw.toString("hex") + ext);
+    });
   },
 });
 
