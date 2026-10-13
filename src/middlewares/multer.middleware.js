@@ -8,7 +8,7 @@ const storage = multer.diskStorage({
   },
 
   filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname) || ""; // get .png .jpg .mp4
+    const ext = path.extname(file.originalname) || ""; // get .png, .jpg, .mp4, etc
 
     crypto.randomBytes(16, function (err, raw) {
       if (err) return cb(err);
