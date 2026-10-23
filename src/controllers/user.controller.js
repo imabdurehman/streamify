@@ -151,15 +151,7 @@ const loginUser = asyncHandler(async (req, res) => {
     .status(200)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          loggedInUser,
-        },
-        "User logged in successfully"
-      )
-    );
+    .json(new ApiResponse(200, loggedInUser, "User logged in successfully"));
 });
 
 const logoutUser = asyncHandler(async (req, res) => {
@@ -273,7 +265,9 @@ const updateUserDetails = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Provided fields cannot be empty");
   }
 
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user?._id).select(
+    "-password -refreshToken"
+  );
 
   // update fullName
   if (fullName !== undefined) {
@@ -302,25 +296,66 @@ const updateUserDetails = asyncHandler(async (req, res) => {
 
   await user.save({ validateBeforeSave: false });
 
-  const updatedUser = {
-    _id: user._id,
-    username: user.username,
-    fullName: user.fullName,
-    email: user.email,
-    avatar: user.avatar,
-    coverImage: user.coverImage,
-  };
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "User details updated successfully"));
+});
+
+const updateUserAvatar = asyncHandler(async (req, res) => {
+  const avatarLocalPath = req.file?.path;
+
+  if (!avatarLocalPath) {
+    throw new ApiError(400, "Avatar file is required");
+  }
+
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
+
+  if (!avatar?.secure_url) {
+    throw new ApiError(500, "Failed to upload avatar to cloudinary");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: { avatar: avatar.secure_url },
+    },
+    {
+      new: true,
+    }
+  ).select("-password -refreshToken");
 
   return res
     .status(200)
-    .json(
-      new ApiResponse(200, { updatedUser }, "User details updated successfully")
-    );
+    .json(new ApiResponse(200, user, "User avatar updated successfully"));
 });
 
-const updateAvatarImage = asyncHandler(async (req, res) => {});
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+  const coverImageLocalPath = req.file?.path;
 
-const updateCoverImage = asyncHandler(async (req, res) => {});
+  if (!coverImageLocalPath) {
+    throw new ApiError(400, "CoverImage file is required");
+  }
+
+  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+
+  if (!coverImage?.secure_url) {
+    throw new ApiError(500, "Failed to upload coverImage to cloudinary");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: { coverImage: coverImage.secure_url },
+    },
+    {
+      new: true,
+    }
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "User coverImage updated successfully"));
+});
 
 export {
   registerUser,
@@ -330,6 +365,6 @@ export {
   changeCurrentPassword,
   getCurrentUser,
   updateUserDetails,
-  updateAvatarImage,
-  updateCoverImage,
+  updateUserAvatar,
+  updateUserCoverImage,
 };
