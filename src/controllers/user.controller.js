@@ -40,12 +40,15 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  if (!emailRegex.test(email.trim())) {
     throw new ApiError(400, "Please enter a valid email format");
   }
 
   const existedUser = await User.findOne({
-    $or: [{ username }, { email }],
+    $or: [
+      { username: username.trim().toLowerCase() },
+      { email: email.trim().toLowerCase() },
+    ],
   });
 
   if (existedUser) {
@@ -79,9 +82,9 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const user = await User.create({
-    username: username.toLowerCase(),
-    fullName,
-    email,
+    username: username.trim().toLowerCase(),
+    fullName: fullName.trim(),
+    email: email.trim().toLowerCase(),
     password,
     avatar: avatar.secure_url,
     coverImage: coverImage?.secure_url || "",
@@ -152,7 +155,7 @@ const loginUser = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         {
-          user: loggedInUser,
+          loggedInUser,
         },
         "User logged in successfully"
       )
@@ -260,7 +263,64 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
 });
 
-const updateUserDetails = asyncHandler(async (req, res) => {});
+const updateUserDetails = asyncHandler(async (req, res) => {
+  const { fullName, email } = req.body;
+
+  if (
+    (fullName !== undefined && !fullName?.trim()) ||
+    (email !== undefined && !email?.trim())
+  ) {
+    throw new ApiError(400, "Provided fields cannot be empty");
+  }
+
+  const user = await User.findById(req.user._id);
+
+  // update fullName
+  if (fullName !== undefined) {
+    user.fullName = fullName.trim();
+  }
+
+  // update email
+  if (email !== undefined) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email.trim())) {
+      throw new ApiError(400, "Please enter a valid email format");
+    }
+
+    const emailExists = await User.findOne({
+      email: email.trim().toLowerCase(),
+      _id: { $ne: user._id },
+    });
+
+    if (emailExists) {
+      throw new ApiError(409, "User with email already exists");
+    }
+
+    user.email = email;
+  }
+
+  await user.save({ validateBeforeSave: false });
+
+  const updatedUser = {
+    _id: user._id,
+    username: user.username,
+    fullName: user.fullName,
+    email: user.email,
+    avatar: user.avatar,
+    coverImage: user.coverImage,
+  };
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { user: updatedUser },
+        "User details updated successfully"
+      )
+    );
+});
 
 const updateAvatarImage = asyncHandler(async (req, res) => {});
 
