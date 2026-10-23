@@ -74,8 +74,8 @@ const registerUser = asyncHandler(async (req, res) => {
   // console.log("Avatar: ", avatar);
   // console.log("CoverImage: ", coverImage);
 
-  if (!avatar) {
-    throw new ApiError(400, "Avatar file is required");
+  if (!avatar?.secure_url) {
+    throw new ApiError(500, "Failed to upload avatar to cloudinary");
   }
 
   const user = await User.create({
@@ -110,12 +110,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   const { email, password } = req.body;
 
-  if (
-    typeof email !== "string" ||
-    typeof password !== "string" ||
-    !email.trim() ||
-    !password.trim()
-  ) {
+  if (!email?.trim() || !password?.trim()) {
     throw new ApiError(400, "Email and password are required");
   }
 
@@ -236,4 +231,49 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Tokens refreshed successfully"));
 });
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken };
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (newPassword.length < 6) {
+    throw new ApiError(400, "Password must be at least 6 characters long");
+  }
+
+  const user = await User.findById(req.user?._id);
+
+  const isPasswordValid = await user.isPasswordCorrect(oldPassword);
+
+  if (!isPasswordValid) {
+    throw new ApiError(400, "Invalid Password");
+  }
+
+  user.password = newPassword;
+  user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully"));
+});
+
+const getCurrentUser = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
+});
+
+const updateUserDetails = asyncHandler(async (req, res) => {});
+
+const updateAvatarImage = asyncHandler(async (req, res) => {});
+
+const updateCoverImage = asyncHandler(async (req, res) => {});
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  updateUserDetails,
+  updateAvatarImage,
+  updateCoverImage,
+};
