@@ -252,7 +252,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
-    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
+    .json(new ApiResponse(200, req.user, "User fetched successfully"));
 });
 
 const updateUserDetails = asyncHandler(async (req, res) => {
@@ -333,13 +333,13 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
   const coverImageLocalPath = req.file?.path;
 
   if (!coverImageLocalPath) {
-    throw new ApiError(400, "CoverImage file is required");
+    throw new ApiError(400, "Cover image file is required");
   }
 
   const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
   if (!coverImage?.secure_url) {
-    throw new ApiError(500, "Failed to upload coverImage to cloudinary");
+    throw new ApiError(500, "Failed to upload cover image to cloudinary");
   }
 
   const user = await User.findByIdAndUpdate(
@@ -354,7 +354,7 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, user, "User coverImage updated successfully"));
+    .json(new ApiResponse(200, user, "User cover image updated successfully"));
 });
 
 export {
