@@ -14,6 +14,7 @@ import {
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { withFileCleanup } from "../middlewares/cleanup.middleware.js";
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.route("/register").post(
       maxCount: 1,
     },
   ]),
-  registerUser
+  withFileCleanup(registerUser)
 );
 
 router.route("/login").post(loginUser);
@@ -43,10 +44,14 @@ router.route("/current-user").get(verifyJWT, getCurrentUser);
 router.route("/update-user").patch(verifyJWT, updateUserDetails);
 router
   .route("/update-avatar")
-  .patch(verifyJWT, upload.single("avatar"), updateUserAvatar);
+  .patch(verifyJWT, upload.single("avatar"), withFileCleanup(updateUserAvatar));
 router
   .route("/update-coverImage")
-  .patch(verifyJWT, upload.single("coverImage"), updateUserCoverImage);
+  .patch(
+    verifyJWT,
+    upload.single("coverImage"),
+    withFileCleanup(updateUserCoverImage)
+  );
 
 router.route("/channel/:username").get(verifyJWT, getUserChannelProfile);
 router.route("/watch-history").get(verifyJWT, getWatchHistory);
