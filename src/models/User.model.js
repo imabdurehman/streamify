@@ -51,6 +51,17 @@ const userSchema = new mongoose.Schema(
 
     refreshToken: {
       type: String,
+      default: "",
+    },
+
+    avatarPublicId: {
+      type: String,
+      default: "",
+    },
+
+    coverImagePublicId: {
+      type: String,
+      default: "",
     },
   },
   { timestamps: true }

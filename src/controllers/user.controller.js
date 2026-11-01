@@ -105,7 +105,9 @@ const registerUser = asyncHandler(async (req, res) => {
       email: email.trim().toLowerCase(),
       password,
       avatar: avatar.secure_url,
+      avatarPublicId: avatar.public_id,
       coverImage: coverImage?.secure_url || "",
+      coverImagePublicId: coverImage?.public_id || "",
     });
 
     userCreated = true;
@@ -354,15 +356,47 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Failed to upload avatar to cloudinary");
   }
 
-  const user = await User.findByIdAndUpdate(
-    req.user?._id,
-    {
-      $set: { avatar: avatar.secure_url },
-    },
-    {
-      new: true,
+  let oldUser;
+
+  try {
+    oldUser = await User.findByIdAndUpdate(
+      req.user?._id,
+      {
+        $set: {
+          avatar: avatar.secure_url,
+          avatarPublicId: avatar.public_id,
+        },
+      },
+      {
+        new: false,
+      }
+    );
+
+    if (!oldUser) {
+      throw new ApiError(404, "User not found");
     }
-  ).select("-password -refreshToken");
+  } catch (error) {
+    // DB update failed: delete new image
+    try {
+      await deleteOnCloudinary(avatar.public_id, "image");
+    } catch (cleanupError) {
+      console.error("Failed to delete new avatar:", cleanupError);
+    }
+    throw error;
+  }
+
+  // DB update succeeded: delete previous image
+  if (oldUser.avatarPublicId) {
+    try {
+      await deleteOnCloudinary(oldUser.avatarPublicId, "image");
+    } catch (error) {
+      console.error("Failed to delete previous avatar:", error);
+    }
+  }
+
+  const user = await User.findById(req.user?._id).select(
+    "-password -refreshToken"
+  );
 
   return res
     .status(200)
@@ -382,15 +416,47 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Failed to upload cover image to cloudinary");
   }
 
-  const user = await User.findByIdAndUpdate(
-    req.user?._id,
-    {
-      $set: { coverImage: coverImage.secure_url },
-    },
-    {
-      new: true,
+  let oldUser;
+
+  try {
+    oldUser = await User.findByIdAndUpdate(
+      req.user?._id,
+      {
+        $set: {
+          coverImage: coverImage.secure_url,
+          coverImagePublicId: coverImage.public_id,
+        },
+      },
+      {
+        new: false,
+      }
+    );
+
+    if (!oldUser) {
+      throw new ApiError(404, "User not found");
     }
-  ).select("-password -refreshToken");
+  } catch (error) {
+    // DB update failed: delete new image
+    try {
+      await deleteOnCloudinary(coverImage.public_id, "image");
+    } catch (cleanupError) {
+      console.error("Failed to delete new cover image:", cleanupError);
+    }
+    throw error;
+  }
+
+  // DB update succeeded: delete previous image
+  if (oldUser.coverImagePublicId) {
+    try {
+      await deleteOnCloudinary(oldUser.coverImagePublicId, "image");
+    } catch (error) {
+      console.error("Failed to delete previous cover image:", error);
+    }
+  }
+
+  const user = await User.findById(req.user?._id).select(
+    "-password -refreshToken"
+  );
 
   return res
     .status(200)
