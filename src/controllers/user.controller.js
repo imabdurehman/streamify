@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { uploadOnCloudinary, deleteOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
@@ -34,74 +34,105 @@ const registerUser = asyncHandler(async (req, res) => {
   // check for user creation
   // return response
 
-  const { username, fullName, email, password } = req.body;
+  const uploadedFiles = [];
+  let userCreated = false;
 
-  if ([username, fullName, email, password].some((field) => !field?.trim())) {
-    throw new ApiError(400, "All fields are required");
+  try {
+    const { username, fullName, email, password } = req.body;
+
+    if ([username, fullName, email, password].some((field) => !field?.trim())) {
+      throw new ApiError(400, "All fields are required");
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      throw new ApiError(400, "Please enter a valid email format");
+    }
+
+    const existedUser = await User.findOne({
+      $or: [
+        { username: username.trim().toLowerCase() },
+        { email: email.trim().toLowerCase() },
+      ],
+    });
+
+    if (existedUser) {
+      throw new ApiError(409, "User with email or username already exists");
+    }
+
+    if (password.length < 6) {
+      throw new ApiError(400, "Password must be at least 6 characters long");
+    }
+
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
+    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+
+    if (!avatarLocalPath) {
+      throw new ApiError(400, "Avatar file is required");
+    }
+
+    // Upload avatar
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+
+    if (!avatar?.secure_url) {
+      throw new ApiError(500, "Failed to upload avatar to cloudinary");
+    }
+
+    uploadedFiles.push({
+      publicId: avatar.public_id,
+      resourceType: avatar.resource_type,
+    });
+
+    // Upload cover image (optional)
+    let coverImage = null;
+    if (coverImageLocalPath) {
+      coverImage = await uploadOnCloudinary(coverImageLocalPath);
+
+      if (!coverImage?.secure_url) {
+        throw new ApiError(500, "Failed to upload cover image to cloudinary");
+      }
+
+      uploadedFiles.push({
+        publicId: coverImage.public_id,
+        resourceType: coverImage.resource_type,
+      });
+    }
+
+    // Create user in MongoDB
+    const user = await User.create({
+      username: username.trim().toLowerCase(),
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      password,
+      avatar: avatar.secure_url,
+      coverImage: coverImage?.secure_url || "",
+    });
+
+    userCreated = true;
+
+    const userResponse = {
+      _id: user._id,
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email,
+      avatar: user.avatar,
+      coverImage: user.coverImage,
+    };
+
+    return res
+      .status(201)
+      .json(new ApiResponse(201, userResponse, "User registered successfully"));
+  } catch (error) {
+    if (!userCreated) {
+      await Promise.allSettled(
+        uploadedFiles.map((file) =>
+          deleteOnCloudinary(file.publicId, file.resourceType)
+        )
+      );
+    }
+
+    throw error;
   }
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email.trim())) {
-    throw new ApiError(400, "Please enter a valid email format");
-  }
-
-  const existedUser = await User.findOne({
-    $or: [
-      { username: username.trim().toLowerCase() },
-      { email: email.trim().toLowerCase() },
-    ],
-  });
-
-  if (existedUser) {
-    throw new ApiError(409, "User with email or username already exists");
-  }
-
-  if (password.length < 6) {
-    throw new ApiError(400, "Password must be at least 6 characters long");
-  }
-
-  // console.log("RequestFiles: ", req.files);
-
-  const avatarLocalPath = req.files?.avatar?.[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
-
-  // console.log("AvatarImagePath: ", avatarLocalPath);
-  // console.log("CoverImagePath: ", coverImageLocalPath);
-
-  if (!avatarLocalPath) {
-    throw new ApiError(400, "Avatar file is required");
-  }
-
-  const avatar = await uploadOnCloudinary(avatarLocalPath);
-  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
-
-  // console.log("Avatar: ", avatar);
-  // console.log("CoverImage: ", coverImage);
-
-  if (!avatar?.secure_url) {
-    throw new ApiError(500, "Failed to upload avatar to cloudinary");
-  }
-
-  const user = await User.create({
-    username: username.trim().toLowerCase(),
-    fullName: fullName.trim(),
-    email: email.trim().toLowerCase(),
-    password,
-    avatar: avatar.secure_url,
-    coverImage: coverImage?.secure_url || "",
-  });
-
-  const createdUser = await User.findById(user._id).select(
-    "-password -refreshToken"
-  );
-
-  if (!createdUser) {
-    throw new ApiError(500, "Something went wrong while registering the user");
-  }
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -230,6 +261,10 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
 
+  if (!oldPassword?.trim() || !newPassword?.trim()) {
+    throw new ApiError(400, "Provided fields cannot be empty");
+  }
+
   if (newPassword.length < 6) {
     throw new ApiError(400, "Password must be at least 6 characters long");
   }
@@ -243,7 +278,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
   }
 
   user.password = newPassword;
-  user.save({ validateBeforeSave: false });
+  await user.save({ validateBeforeSave: false });
 
   return res
     .status(200)
@@ -258,6 +293,10 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 
 const updateUserDetails = asyncHandler(async (req, res) => {
   const { fullName, email } = req.body;
+
+  if (fullName === undefined && email === undefined) {
+    throw new ApiError(400, "At least one field is required");
+  }
 
   if (
     (fullName !== undefined && !fullName?.trim()) ||
@@ -292,7 +331,7 @@ const updateUserDetails = asyncHandler(async (req, res) => {
       throw new ApiError(409, "User with email already exists");
     }
 
-    user.email = email;
+    user.email = email.trim().toLowerCase();
   }
 
   await user.save({ validateBeforeSave: false });
