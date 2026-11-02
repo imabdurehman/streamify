@@ -6,7 +6,7 @@ const errorHandler = (err, req, res, next) => {
   const message =
     err instanceof ApiError ? err.message : "Internal Server Error";
 
-  console.error(err.statusCode || err);
+  console.error(err.stack || err);
 
   return res.status(statusCode).json({
     statusCode,
